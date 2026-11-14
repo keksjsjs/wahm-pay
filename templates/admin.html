@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>لوحة التحكم — Wahm Pay</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Tajawal', 'ui-sans-serif', 'system-ui'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: Tajawal, system-ui, sans-serif; }
+    .mono { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+  <header class="bg-slate-950 text-white">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center">💳</div>
+        <div>
+          <div class="font-extrabold text-lg leading-tight">Wahm Pay</div>
+          <div class="text-xs text-white/50">لوحة تحكم التاجر · {{ merchant_name }}</div>
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button type="submit" class="text-sm bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-4 py-2">تسجيل خروج</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="space-y-2">
+          {% for category, message in messages %}
+            <div class="rounded-xl px-4 py-3 text-sm border
+              {% if category == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-900
+              {% else %}bg-red-50 border-red-200 text-red-800{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
+        <div class="text-sm text-slate-500">معلّقة</div>
+        <div class="text-3xl font-extrabold text-amber-600 mt-1">{{ counts['Pending'] }}</div>
+      </div>
+      <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
+        <div class="text-sm text-slate-500">مدفوعة</div>
+        <div class="text-3xl font-extrabold text-emerald-600 mt-1">{{ counts['Paid'] }}</div>
+      </div>
+      <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
+        <div class="text-sm text-slate-500">منتهية</div>
+        <div class="text-3xl font-extrabold text-slate-500 mt-1">{{ counts['Expired'] }}</div>
+      </div>
+    </section>
+
+    <section class="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
+      <h2 class="text-xl font-extrabold mb-1">إنشاء فاتورة جديدة</h2>
+      <p class="text-sm text-slate-500 mb-5">سيُضاف إلى السعر هللات عشوائية فريدة حتى لا تتداخل الحوالات المتزامنة. صلاحية الفاتورة {{ validity_minutes }} دقيقة.</p>
+      <form method="post" action="{{ url_for('admin_create') }}" class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="md:col-span-4">
+          <label class="block text-sm font-medium text-slate-600 mb-1" for="product_name">اسم المنتج</label>
+          <input id="product_name" name="product_name" required maxlength="200" placeholder="مثال: اشتراك شهري"
+            class="w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-slate-600 mb-1" for="price">السعر الأساسي (ر.س)</label>
+          <input id="price" name="price" required inputmode="decimal" placeholder="50.00"
+            class="w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 mono" />
+        </div>
+        <div class="md:col-span-4">
+          <label class="block text-sm font-medium text-slate-600 mb-1" for="redirect_url">رابط التوجيه بعد الدفع (اختياري)</label>
+          <input id="redirect_url" name="redirect_url" type="url" maxlength="2000" placeholder="https://example.com/thank-you"
+            class="w-full rounded-xl border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500" dir="ltr" />
+        </div>
+        <div class="md:col-span-2">
+          <button type="submit" class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5">إنشاء فاتورة</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-xl font-extrabold">الفواتير</h2>
+        <input id="filter" type="search" placeholder="بحث بالتوكن أو المنتج أو الحالة…"
+          class="rounded-xl border border-slate-300 px-3 py-2 text-sm w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm" id="invoices-table">
+          <thead class="bg-slate-50 text-slate-500">
+            <tr>
+              <th class="text-right px-4 py-3 font-medium">التوكن</th>
+              <th class="text-right px-4 py-3 font-medium">المنتج</th>
+              <th class="text-right px-4 py-3 font-medium">المبلغ المطلوب</th>
+              <th class="text-right px-4 py-3 font-medium">الحالة</th>
+              <th class="text-right px-4 py-3 font-medium">أُنشئت / تنتهي</th>
+              <th class="text-right px-4 py-3 font-medium">الحوالة المستلمة</th>
+              <th class="text-right px-4 py-3 font-medium">رابط الدفع</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for inv in invoices %}
+            <tr class="invoice-row hover:bg-slate-50/80" data-search="{{ inv.token }} {{ inv.product_name }} {{ inv.status }}">
+              <td class="px-4 py-3 font-bold mono dir-ltr" dir="ltr">{{ inv.token }}</td>
+              <td class="px-4 py-3">
+                <div class="font-medium">{{ inv.product_name }}</div>
+                <div class="text-xs text-slate-400">الأساسي {{ inv.base_price_str }} ر.س</div>
+              </td>
+              <td class="px-4 py-3 font-extrabold mono text-emerald-700">{{ inv.amount_str }} <span class="text-xs font-medium text-slate-400">ر.س</span></td>
+              <td class="px-4 py-3">
+                {% if inv.status == 'Paid' %}
+                  <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-1 text-xs font-bold">مدفوعة</span>
+                {% elif inv.status == 'Pending' %}
+                  <span class="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-xs font-bold">معلّقة</span>
+                {% else %}
+                  <span class="inline-flex items-center rounded-full bg-slate-200 text-slate-700 px-2.5 py-1 text-xs font-bold">منتهية</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-xs text-slate-600 leading-relaxed">
+                <div>إنشاء: {{ inv.created_local }}</div>
+                <div>انتهاء: {{ inv.expires_local }}</div>
+                {% if inv.status == 'Paid' %}<div>دفع: {{ inv.paid_local }}</div>{% endif %}
+                <div class="text-slate-400">توقيت الرياض</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-slate-600 leading-relaxed">
+                {% if inv.status == 'Paid' %}
+                  <div>المبلغ: <span class="font-bold mono">{{ inv.transfer_amount_str or inv.amount_str }}</span> ر.س</div>
+                  <div>المرسل: {{ inv.sender_name or '—' }}</div>
+                  <div>البنك: {{ inv.bank_name or '—' }}</div>
+                  <div>المرجع: {{ inv.reference or '—' }}</div>
+                {% else %}
+                  <span class="text-slate-400">لا توجد حوالة بعد</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" data-copy="{{ inv.payment_link }}" class="copy-btn rounded-lg bg-slate-900 text-white text-xs font-bold px-3 py-1.5 hover:bg-slate-700">نسخ الرابط</button>
+                  <a href="{{ inv.payment_link }}" target="_blank" rel="noopener" class="rounded-lg border border-slate-300 text-xs font-bold px-3 py-1.5 hover:bg-slate-50">فتح</a>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7" class="px-4 py-10 text-center text-slate-400">لا توجد فواتير بعد. أنشئ أول فاتورة من النموذج أعلاه.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {% if unmatched %}
+    <section class="rounded-2xl bg-white border border-amber-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b border-amber-100 bg-amber-50">
+        <h2 class="text-lg font-extrabold text-amber-950">حوالات بدون فاتورة مطابقة</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-amber-50/50 text-slate-500">
+            <tr>
+              <th class="text-right px-4 py-3 font-medium">الوقت</th>
+              <th class="text-right px-4 py-3 font-medium">المبلغ</th>
+              <th class="text-right px-4 py-3 font-medium">المرسل</th>
+              <th class="text-right px-4 py-3 font-medium">البنك</th>
+              <th class="text-right px-4 py-3 font-medium">المرجع</th>
+              <th class="text-right px-4 py-3 font-medium">السبب</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for item in unmatched %}
+            <tr>
+              <td class="px-4 py-3 text-xs">{{ item.created_local }}</td>
+              <td class="px-4 py-3 font-bold mono">{{ item.amount_str }}</td>
+              <td class="px-4 py-3">{{ item.sender_name or '—' }}</td>
+              <td class="px-4 py-3">{{ item.bank_name or '—' }}</td>
+              <td class="px-4 py-3">{{ item.reference or '—' }}</td>
+              <td class="px-4 py-3 text-xs text-slate-600">{{ item.reason or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if logs %}
+    <section class="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-100">
+        <h2 class="text-lg font-extrabold">سجل الـ Webhook الأخير</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-50 text-slate-500">
+            <tr>
+              <th class="text-right px-4 py-3 font-medium">الوقت</th>
+              <th class="text-right px-4 py-3 font-medium">النتيجة</th>
+              <th class="text-right px-4 py-3 font-medium">التوكن</th>
+              <th class="text-right px-4 py-3 font-medium">التفاصيل</th>
+              <th class="text-right px-4 py-3 font-medium">مقتطف الرسالة</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for item in logs %}
+            <tr>
+              <td class="px-4 py-3 text-xs whitespace-nowrap">{{ item.received_local }}</td>
+              <td class="px-4 py-3 font-bold">{{ item.result }}</td>
+              <td class="px-4 py-3 mono" dir="ltr">{{ item.invoice_token or '—' }}</td>
+              <td class="px-4 py-3 text-xs text-slate-600">{{ item.detail or '—' }}</td>
+              <td class="px-4 py-3 text-xs text-slate-500 max-w-xs truncate" title="{{ item.raw_text or '' }}">{{ (item.raw_text or '—')[:80] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    <p class="text-center text-xs text-slate-400 pb-6">
+      الرابط العام الحالي: <span dir="ltr">{{ base_url }}</span> · الآيبان المعروض للعملاء:
+      <span dir="ltr" class="mono">{{ merchant_iban or 'غير معيّن' }}</span>
+    </p>
+  </main>
+
+  <script>
+    document.getElementById('filter').addEventListener('input', function (e) {
+      const q = e.target.value.trim().toLowerCase();
+      document.querySelectorAll('.invoice-row').forEach(function (row) {
+        const hay = (row.getAttribute('data-search') || '').toLowerCase();
+        row.style.display = hay.indexOf(q) !== -1 ? '' : 'none';
+      });
+    });
+
+    document.querySelectorAll('.copy-btn').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
+        const value = btn.getAttribute('data-copy') || '';
+        try {
+          await navigator.clipboard.writeText(value);
+          const old = btn.textContent;
+          btn.textContent = 'تم النسخ';
+          setTimeout(function () { btn.textContent = old; }, 1500);
+        } catch (err) {
+          prompt('انسخ الرابط يدوياً:', value);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

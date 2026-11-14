@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% if missing %}الفاتورة غير موجودة{% else %}دفع {{ invoice.product_name }}{% endif %} — Wahm Pay</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Tajawal', 'ui-sans-serif', 'system-ui'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: Tajawal, system-ui, sans-serif; }
+    .mono { font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-bl from-slate-100 via-white to-emerald-50 text-slate-900">
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-lg">
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center gap-2 text-slate-500 text-sm font-bold">
+          <span class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">💳</span>
+          Wahm Pay
+        </div>
+      </div>
+
+      {% if missing %}
+      <div class="rounded-3xl bg-white border border-slate-200 shadow-xl p-8 text-center">
+        <div class="text-5xl mb-4">😕</div>
+        <h1 class="text-2xl font-extrabold mb-2">الفاتورة غير موجودة</h1>
+        <p class="text-slate-500">الرمز <span class="mono" dir="ltr">{{ token }}</span> غير صالح أو تم حذفه.</p>
+      </div>
+
+      {% else %}
+      <div id="card" class="rounded-3xl bg-white border border-slate-200 shadow-xl overflow-hidden"
+           data-token="{{ invoice.token }}"
+           data-status="{{ invoice.status }}"
+           data-expires="{{ invoice.expires_at }}"
+           data-redirect="{{ invoice.redirect_url or '' }}">
+
+        {# ---- SUCCESS STATE ---- #}
+        <div id="state-paid" class="{% if invoice.status != 'Paid' %}hidden{% endif %} p-8 text-center">
+          <div class="mx-auto w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-4xl mb-5">✅</div>
+          <h1 class="text-2xl font-extrabold text-emerald-700 mb-2">تم الدفع بنجاح</h1>
+          <p class="text-slate-500 mb-6">استلمنا الحوالة الخاصة بـ <span class="font-bold text-slate-800">{{ invoice.product_name }}</span>.</p>
+          <a id="claim-btn" href="{{ invoice.redirect_url or '#' }}"
+             class="inline-flex items-center justify-center rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 {% if not invoice.redirect_url %}hidden{% endif %}">
+            استلام المنتج / المتابعة
+          </a>
+          <p id="claim-note" class="text-sm text-slate-400 mt-4 {% if invoice.redirect_url %}{% else %}hidden{% endif %}">سيتم تحويلك تلقائياً خلال ثوانٍ…</p>
+        </div>
+
+        {# ---- EXPIRED STATE ---- #}
+        <div id="state-expired" class="{% if invoice.status != 'Expired' %}hidden{% endif %} p-8 text-center">
+          <div class="mx-auto w-20 h-20 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-4xl mb-5">⌛</div>
+          <h1 class="text-2xl font-extrabold text-slate-800 mb-2">انتهت صلاحية الفاتورة</h1>
+          <p class="text-slate-500">فاتورة <span class="font-bold">{{ invoice.product_name }}</span> لم تعد صالحة. اطلب رابط دفع جديد من التاجر.</p>
+        </div>
+
+        {# ---- PENDING STATE ---- #}
+        <div id="state-pending" class="{% if invoice.status != 'Pending' %}hidden{% endif %}">
+          <div class="bg-slate-950 text-white px-6 py-5 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-xs text-white/50 mb-1">فاتورة رقم</div>
+              <div class="font-bold mono" dir="ltr">{{ invoice.token }}</div>
+            </div>
+            <div class="text-left" dir="ltr">
+              <div class="text-xs text-white/50 mb-1 text-right">الوقت المتبقي</div>
+              <div id="countdown" class="font-extrabold text-lg mono tabular-nums">--:--</div>
+            </div>
+          </div>
+
+          <div class="p-6 space-y-5">
+            <div>
+              <div class="text-sm text-slate-500">المنتج</div>
+              <h1 class="text-2xl font-extrabold mt-1">{{ invoice.product_name }}</h1>
+            </div>
+
+            <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-sm text-emerald-800/70">حوّل المبلغ التالي بالضبط</div>
+                  <div id="amount-value" class="text-4xl font-extrabold text-emerald-700 mono mt-1">{{ amount_str }} <span class="text-lg font-bold">ر.س</span></div>
+                </div>
+                <button type="button" id="copy-amount" class="shrink-0 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm px-4 py-2">نسخ المبلغ</button>
+              </div>
+              <p class="text-xs text-emerald-900/60 mt-3">الهللات جزء أساسي من التحقق. حوّل <span class="font-bold">{{ amount_str }}</span> وليس المبلغ التقريبي.</p>
+            </div>
+
+            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-5">
+              <div class="text-sm text-slate-500 mb-1">إلى حساب</div>
+              <div class="font-bold mb-3">{{ merchant_name }}</div>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="text-xs text-slate-400 mb-1">الآيبان</div>
+                  <div id="iban-value" class="font-extrabold mono text-lg break-all" dir="ltr">{{ merchant_iban or 'غير مُعدّ بعد' }}</div>
+                </div>
+                <button type="button" id="copy-iban" class="shrink-0 rounded-xl bg-slate-900 hover:bg-slate-700 text-white font-bold text-sm px-4 py-2" {% if not merchant_iban %}disabled{% endif %}>نسخ الآيبان</button>
+              </div>
+            </div>
+
+            <ol class="text-sm text-slate-600 space-y-2 bg-white">
+              <li>1. انسخ المبلغ والآيبان.</li>
+              <li>2. حوّل من تطبيق البنك المبلغ <span class="font-bold">بالضبط</span>.</li>
+              <li>3. اترك هذه الصفحة مفتوحة — يتم التحقق تلقائياً خلال ثوانٍ بعد وصول الحوالة.</li>
+            </ol>
+
+            <div id="waiting" class="flex items-center justify-center gap-2 text-sm text-slate-400">
+              <span class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+              بانتظار تأكيد الحوالة…
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <p class="text-center text-xs text-slate-400 mt-6">Wahm Pay · تحقق تلقائي من الحوالات</p>
+    </div>
+  </div>
+
+  {% if not missing %}
+  <script>
+    (function () {
+      const card = document.getElementById('card');
+      if (!card) return;
+
+      const token = card.getAttribute('data-token');
+      const redirectUrl = card.getAttribute('data-redirect') || '';
+      let currentStatus = card.getAttribute('data-status');
+      const expiresAt = new Date(card.getAttribute('data-expires'));
+
+      const statePaid = document.getElementById('state-paid');
+      const stateExpired = document.getElementById('state-expired');
+      const statePending = document.getElementById('state-pending');
+      const countdownEl = document.getElementById('countdown');
+      const claimBtn = document.getElementById('claim-btn');
+
+      function show(status) {
+        currentStatus = status;
+        statePaid.classList.toggle('hidden', status !== 'Paid');
+        stateExpired.classList.toggle('hidden', status !== 'Expired');
+        statePending.classList.toggle('hidden', status !== 'Pending');
+      }
+
+      function copyText(value, button, label) {
+        const done = function () {
+          const old = button.textContent;
+          button.textContent = 'تم النسخ';
+          setTimeout(function () { button.textContent = old || label; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(value).then(done).catch(function () {
+            prompt('انسخ يدوياً:', value);
+          });
+        } else {
+          prompt('انسخ يدوياً:', value);
+        }
+      }
+
+      const amountBtn = document.getElementById('copy-amount');
+      if (amountBtn) {
+        amountBtn.addEventListener('click', function () {
+          const amount = document.getElementById('amount-value').childNodes[0].textContent.trim();
+          copyText(amount, amountBtn, 'نسخ المبلغ');
+        });
+      }
+      const ibanBtn = document.getElementById('copy-iban');
+      if (ibanBtn) {
+        ibanBtn.addEventListener('click', function () {
+          const iban = document.getElementById('iban-value').textContent.trim().replace(/\s+/g, '');
+          copyText(iban, ibanBtn, 'نسخ الآيبان');
+        });
+      }
+
+      let redirected = false;
+      function handlePaid(data) {
+        show('Paid');
+        const url = (data && data.redirect_url) || redirectUrl;
+        if (url) {
+          claimBtn.href = url;
+          claimBtn.classList.remove('hidden');
+          const note = document.getElementById('claim-note');
+          if (note) note.classList.remove('hidden');
+          if (!redirected) {
+            redirected = true;
+            setTimeout(function () { window.location.href = url; }, 2500);
+          }
+        }
+      }
+
+      function tickCountdown() {
+        if (!countdownEl || currentStatus !== 'Pending') return;
+        const now = new Date();
+        let diff = Math.floor((expiresAt.getTime() - now.getTime()) / 1000);
+        if (isNaN(diff)) {
+          countdownEl.textContent = '--:--';
+          return;
+        }
+        if (diff <= 0) {
+          countdownEl.textContent = '00:00';
+          show('Expired');
+          return;
+        }
+        const m = Math.floor(diff / 60);
+        const s = diff % 60;
+        countdownEl.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      }
+
+      async function poll() {
+        if (currentStatus === 'Paid') return;
+        try {
+          const res = await fetch('/api/status/' + encodeURIComponent(token), { cache: 'no-store' });
+          const data = await res.json();
+          if (!data || !data.ok) return;
+          if (data.status === 'Paid') {
+            handlePaid(data);
+          } else if (data.status === 'Expired') {
+            show('Expired');
+          }
+        } catch (err) {
+          /* الشبكة قد تنقطع لحظياً — نعيد المحاولة في الدورة التالية */
+        }
+      }
+
+      if (currentStatus === 'Paid') {
+        handlePaid({ redirect_url: redirectUrl });
+      } else if (currentStatus === 'Pending') {
+        tickCountdown();
+        setInterval(tickCountdown, 250);
+        poll();
+        setInterval(poll, 3000);
+      }
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

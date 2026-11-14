@@ -1,0 +1,39 @@
+# Blueprint for Render.com
+# Docs: https://render.com/docs/blueprint-spec
+# After connecting the repo, set the secret environment variables in the dashboard.
+# For SQLite to survive deploys/restarts, add a persistent disk (mount /var/data)
+# and set DATABASE_PATH=/var/data/payments.db
+
+services:
+  - type: web
+    name: wahm-pay
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: MERCHANT_IBAN
+        sync: false
+      - key: MERCHANT_NAME
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: INVOICE_VALIDITY_MINUTES
+        value: "15"
+      - key: DATABASE_PATH
+        value: /var/data/payments.db
